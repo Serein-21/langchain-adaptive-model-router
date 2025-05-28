@@ -35,6 +35,10 @@ SIMPLE: Questions requiring basic information retrieval, simple calculations, de
 COMPLEX: Questions requiring multi-step reasoning, mathematical proofs, strategic analysis, algorithm design, scientific problem-solving, or deep domain expertise. Examples: "Prove mathematical theorems", "Design system architecture", "Analyze business strategy", "Solve multi-variable optimization problems"""
     )
 
+    model_names: Literal["gpt-4o-mini", "o3-mini"] = Field(
+        description="The name of the model that should be chosen: 'gpt-4o-mini' for simple questions, 'o3-mini' for complex questions"
+    )
+
     reason: str = Field(
         description="Provide a detailed explanation of your reasoning behind categorising the question as either 'simple' or 'complex'."
     )
@@ -57,7 +61,7 @@ Classification_Model = ChatOpenAI(
 )
 
 Simple_Chat_model = ChatOpenAI(
-    model='gpt-4.1-nano',
+    model='gpt-4o-mini',
     temperature=0.1,
     max_completion_tokens=300
 )
@@ -84,10 +88,8 @@ parser = StrOutputParser()
 
 # Additional structured output model for answers
 class modelname(BaseModel):
-    model_name: str = Field(description="Name of the model if its gpt-4o , o3-mini or gpt-4.1-nano")
     reason: str = Field(description="Reasoning behind the choice")
-    answer: str = Field(description="Answer to the question")
-
+    answer: str = Field(description="Answer to the quetsion")
 
 
 complex_output_model = Complex_Chat_Model.with_structured_output(modelname)
@@ -105,8 +107,8 @@ simplechain = RunnableSequence(promptit, simple_output_model)
 # ============================================================================
 
 branch_chain = RunnableBranch(
-    (lambda x: x.sentiment == 'simple', simplechain),
-    (lambda x: x.sentiment == 'complex', complexChain),
+    (lambda x: x.sentiment == 'simple'and x.model_names=='gpt-4o-mini', simplechain),
+    (lambda x: x.sentiment == 'complex' and x.model_names=='o3-mini', complexChain),
     RunnableLambda(lambda x: "could not find sentiment")
 )
 
@@ -118,10 +120,16 @@ final_chain = RunnableSequence(classification_chain, branch_chain)
 # ============================================================================
 
 if __name__ == "__main__":
-    # Test query
-    finalprompt = promptit.format(query='How many days are there in a year?')
+    # Test classification first
+    test_query = 'How many days are there in a year?'
+    classification_result = classification_chain.invoke({'query': test_query})
 
-    # Process and get result
-    resultant = final_chain.invoke(finalprompt)
-    print(resultant)
-    print()
+    print(f"Classification: {classification_result.sentiment}")
+    print(f"Recommended Model: {classification_result.model_names}")
+    print(f"Classification Reason: {classification_result.reason}")
+    print("-" * 50)
+
+    # Test full chain
+    resultant = final_chain.invoke({'query': test_query})
+    print(f"Final Answer: {resultant.answer}")
+    print(f"Answer Reasoning: {resultant.reason}")
